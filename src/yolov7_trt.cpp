@@ -32,7 +32,7 @@ namespace siran
 /// @private function
 static cv::Mat StaticResize(const cv::Mat& src);
 static cv::cuda::GpuMat StaticResize(const cv::cuda::GpuMat& src);
-static int ObjInfo2ObjResult(const cv::cuda::GpuMat &src, const obj_info &obj_result, ObjResult *pobj_result);
+static int ObjInfo2ObjResult(const cv::cuda::GpuMat &src, std::vector<object_t> &obj_result, ObjResult *pobj_result);
 
 
 /// @brief Tools function, only for debuging.
@@ -251,6 +251,7 @@ int Yolov7Trt::Yolov7Infer(const cv::Mat &src, ObjResult *pobj_result, const std
     cudaStreamSynchronize(cuda_stream_);
 
     time_start = GetCurrentTime();
+    memset(pobj_result, 0, sizeof(ObjResult));
     iret = Yolov7Postprocess(trt_cpu_out_buffers_, gpu_src, pobj_result);
     if(iret != 0)
     {
@@ -269,7 +270,7 @@ int Yolov7Trt::Yolov7Infer(const cv::Mat &src, ObjResult *pobj_result, const std
             tmp_path = *path;
         }
         time_start = GetCurrentTime();
-        DrawObjects(src, pobj_result, tmp_path, verbos);
+        DrawObjects(src, pobj_result, tmp_path, true);
         time_process = GetCurrentTime() - time_start;
         printf("%%%%% YOLOV7 DrawResult time: %.2fms\n", time_process);
     }
@@ -291,13 +292,13 @@ int Yolov7Trt::Yolov7Postprocess(float *trt_out, const cv::cuda::GpuMat &src, Ob
     {
         return iret;
     }
-    obj_info tmp_obj_result;
-    iret = pyolov7_->YoloProcess(trt_out, BBOX_CONF_THRESH, &tmp_obj_result);
+    std::vector<object_t> object_t_vec;
+    iret = pyolov7_->YoloProcess(trt_out, BBOX_CONF_THRESH, &object_t_vec);
     if(iret != 0)
     {
         return iret;
     }
-    iret = ObjInfo2ObjResult(src, tmp_obj_result, pobj_result);
+    iret = ObjInfo2ObjResult(src, object_t_vec, pobj_result);
     if(iret != 0)
     {
         return iret;
@@ -334,10 +335,10 @@ static cv::cuda::GpuMat StaticResize(const cv::cuda::GpuMat& src)
 }
 
 
-static int ObjInfo2ObjResult(const cv::cuda::GpuMat &src, const obj_info &obj_result, ObjResult *pobj_result)
+static int ObjInfo2ObjResult(const cv::cuda::GpuMat &src, std::vector<object_t> &obj_result, ObjResult *pobj_result)
 {
     int iret = 0;
-    if(0 == obj_result.obj_num)
+    if(0 == obj_result.size() || obj_result.size() > 100)
     {
         return -1;
     }
@@ -346,15 +347,15 @@ static int ObjInfo2ObjResult(const cv::cuda::GpuMat &src, const obj_info &obj_re
     const float ratio = float(img_w) / float(kInputWidth) > float(img_h) / float(kInputHeight)  ?
                 float(img_w) / float(kInputWidth) : float(img_h) / float(kInputHeight);
     memset(pobj_result, 0, sizeof(ObjResult));
-    pobj_result->obj_num = obj_result.obj_num;
-    for(int i=0;i<obj_result.obj_num;++i)
+    pobj_result->obj_num = obj_result.size();
+    for(int i=0;i<obj_result.size();++i)
     {
-        pobj_result->obj_info[i].obj_box.x = (int)obj_result.obj_result[i].left * ratio;
-        pobj_result->obj_info[i].obj_box.y = (int)obj_result.obj_result[i].low  * ratio;
-        pobj_result->obj_info[i].obj_box.width = ((int)obj_result.obj_result[i].right - (int)obj_result.obj_result[i].left) * ratio;
-        pobj_result->obj_info[i].obj_box.height = ((int)obj_result.obj_result[i].high - (int)obj_result.obj_result[i].low) * ratio;
-        pobj_result->obj_info[i].obj_class = obj_result.obj_result[i].id;
-        pobj_result->obj_info[i].obj_prob = obj_result.obj_result[i].prob;
+        pobj_result->obj_info[i].obj_box.x = (int)obj_result[i].left * ratio;
+        pobj_result->obj_info[i].obj_box.y = (int)obj_result[i].low  * ratio;
+        pobj_result->obj_info[i].obj_box.width = ((int)obj_result[i].right - (int)obj_result[i].left) * ratio;
+        pobj_result->obj_info[i].obj_box.height = ((int)obj_result[i].high - (int)obj_result[i].low) * ratio;
+        pobj_result->obj_info[i].obj_class = obj_result[i].id;
+        pobj_result->obj_info[i].obj_prob = obj_result[i].prob;
     }
     return iret;
 }
@@ -386,7 +387,8 @@ static void DrawObjects(const cv::Mat& bgr, ObjResult *pobj_result, std::string 
         if (c_mean > 0.5)
         {
             txt_color = cv::Scalar(0, 0, 0);
-        }else
+        }
+        else
         {
             txt_color = cv::Scalar(255, 255, 255);
         }

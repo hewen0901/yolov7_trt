@@ -144,7 +144,7 @@ public:
         return;
     }
 
-    int YoloProcess(float *fea_out, const float &g_thresh, obj_info *pObjInfo)
+    int YoloProcess(float *fea_out, const float &g_thresh, std::vector<object_t> *pObjInfo)
     {
         int iret = 0;
         if(nullptr == fea_out || NULL == pObjInfo)
@@ -152,7 +152,7 @@ public:
             printf("input error\n");
             return -1;
         }
-        memset(pObjInfo, 0, sizeof(obj_info));
+        pObjInfo->clear();
         int feat = 0;
         int object_num = 0;
         const int ac_num = 3;
@@ -203,36 +203,27 @@ public:
                 }
             }
         }
+
         if(0 == object_num)
         {
             return -999;
         }
         NMS(objects, object_num, valid);
-        std::vector<int> obj_vec;
-        obj_vec.resize(object_num);
-        int index = 0;
-        for(std::vector<int>::iterator iter = obj_vec.begin(); iter != obj_vec.end();)
+        int j = 0;
+        for(int idx=0;idx<object_num;idx++)
         {
-            if (valid[index])
+            if(valid[idx])
             {
-                *iter = index;
-                iter++;
+                object_t tt;
+                tt.left  = objects[idx].left * input_w;
+                tt.low   = objects[idx].low * input_h;
+                tt.right = objects[idx].right * input_w;
+                tt.high  = objects[idx].high * input_h;
+                tt.id    = objects[idx].id;
+                tt.prob  = objects[idx].prob;
+                pObjInfo->push_back(tt);
+                j++;
             }
-            else
-            {
-                obj_vec.erase(iter);
-            }
-            index++;
-        }
-        for (int idx = 0; idx < obj_vec.size(); idx++)
-        {
-            pObjInfo->obj_result[idx].left  = objects[obj_vec[idx]].left * input_w;
-            pObjInfo->obj_result[idx].low   = objects[obj_vec[idx]].low * input_h;
-            pObjInfo->obj_result[idx].right = objects[obj_vec[idx]].right * input_w;
-            pObjInfo->obj_result[idx].high  = objects[obj_vec[idx]].high * input_h;
-            pObjInfo->obj_result[idx].id    = objects[obj_vec[idx]].id;
-            pObjInfo->obj_result[idx].prob  = objects[obj_vec[idx]].prob;
-            pObjInfo->obj_num++;
         }
         return iret;
     }
